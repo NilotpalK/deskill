@@ -2,7 +2,10 @@
 name = "deskill"
 version = "0.1.0"
 description = "Python implementation of the @skills protocol (SylphAI, arXiv 2608.12610): MCP server + CLI"
+readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.11"
+urls = { Repository = "https://github.com/NilotpalK/deskill", Protocol = "https://github.com/SylphAI-Inc/atskills" }
 dependencies = ["pyyaml>=6", "pathspec>=0.12", "mcp>=1.0"]
 
 [project.scripts]
