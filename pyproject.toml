@@ -14,6 +14,7 @@ deskill-mcp = "deskill.mcp_server:run"
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+bench = ["anthropic>=0.122"]
 
 [build-system]
 requires = ["setuptools>=68"]
