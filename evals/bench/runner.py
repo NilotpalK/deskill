@@ -65,23 +65,76 @@ def _text_of(response) -> str:
     return ''.join(b.text for b in response.content if b.type == 'text')
 
 
-def _call(client, system: str, messages: list[dict], max_tokens: int):
+def _call_api(client, system: str, messages: list[dict], max_tokens: int) -> tuple[str, str]:
     # No refusal fallbacks on purpose: a silent model switch would corrupt the
     # measurement. Refusals are recorded as error rows instead.
-    return client.messages.create(
+    r = client.messages.create(
         model=MODEL, max_tokens=max_tokens, system=system, messages=messages)
+    return _text_of(r), r.stop_reason
+
+
+def _clean_settings_file(workdir: Path) -> Path:
+    """Flag-settings that strip Claude Code's own context from the request:
+    plugins, bundled skills, MCP, hooks, memory, git instructions. Verified to
+    reduce harness overhead from ~36k tokens to ~30 (measured 2026-08-19)."""
+    settings = {
+        'disableBundledSkills': True, 'disableClaudeAiConnectors': True,
+        'disableAllHooks': True, 'autoMemoryEnabled': False,
+        'includeGitInstructions': False,
+    }
+    user_settings = Path.home() / '.claude' / 'settings.json'
+    if user_settings.is_file():
+        enabled = json.loads(user_settings.read_text(encoding='utf-8')).get('enabledPlugins') or {}
+        settings['enabledPlugins'] = {name: False for name in enabled}
+    f = workdir / 'clean-settings.json'
+    f.write_text(json.dumps(settings), encoding='utf-8')
+    return f
+
+
+def _call_claude_code(system: str, messages: list[dict], workdir: Path, settings: Path) -> tuple[str, str]:
+    """One trial through `claude -p` — runs on the user's subscription, no API key.
+
+    Multi-turn continuations are flattened into a single prompt (claude -p is
+    single-shot); rows record backend so results are never mixed across backends.
+    """
+    import shutil
+    import subprocess
+    exe = shutil.which('claude')
+    if not exe:
+        raise RuntimeError('claude CLI not found on PATH')
+    prompt = '\n\n'.join(
+        (m['content'] if m['role'] == 'user' else f'[Your previous reply]: {m["content"]}')
+        for m in messages)
+    p = subprocess.run(
+        [exe, '-p', prompt, '--system-prompt', system, '--tools', '',
+         '--no-session-persistence', '--output-format', 'json', '--model', MODEL,
+         '--settings', str(settings), '--strict-mcp-config',
+         '--exclude-dynamic-system-prompt-sections'],
+        cwd=workdir, capture_output=True, text=True, encoding='utf-8', timeout=300)
+    if p.returncode != 0:
+        raise RuntimeError(f'claude -p failed: {p.stderr.strip()[:300]}')
+    data = json.loads(p.stdout)
+    if data.get('is_error'):
+        raise RuntimeError(f'claude -p error result: {str(data)[:300]}')
+    return data['result'], data.get('stop_reason') or 'end_turn'
 
 
 def _estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
-def run(exp: str, out: Path, dry_run: bool, yes: bool, seed: int) -> int:
+def run(exp: str, out: Path, dry_run: bool, yes: bool, seed: int,
+        backend: str = 'auto', limit: int = 0) -> int:
+    if backend == 'auto':
+        import os
+        backend = 'api' if os.environ.get('ANTHROPIC_API_KEY') else 'claude-code'
     trials = exp1_trials(seed) if exp == 'exp1' else exp2_trials(seed)
     done = set()
     if out.exists():
         done = {json.loads(line)['trial_id'] for line in out.read_text(encoding='utf-8').splitlines() if line}
     todo = [t for t in trials if t.trial_id not in done]
+    if limit:
+        todo = todo[:limit]
     print(f'{exp}: {len(trials)} trials, {len(done)} done, {len(todo)} to run')
 
     tmp = Path(tempfile.mkdtemp(prefix='deskill-bench-'))
@@ -104,8 +157,12 @@ def run(exp: str, out: Path, dry_run: bool, yes: bool, seed: int) -> int:
         est_out += 400
         if t.condition == 'installed':
             est_in += _estimate_tokens(block_for(t)) + 400  # possible stage 2
-    cost = est_in / 1e6 * PRICE_IN + est_out / 1e6 * PRICE_OUT
-    print(f'estimated worst-case: ~{est_in:,} in / ~{est_out:,} out tokens ≈ ${cost:.2f} ({MODEL})')
+    if backend == 'api':
+        cost = est_in / 1e6 * PRICE_IN + est_out / 1e6 * PRICE_OUT
+        print(f'estimated worst-case: ~{est_in:,} in / ~{est_out:,} out tokens ≈ ${cost:.2f} ({MODEL}, api backend)')
+    else:
+        print(f'backend claude-code: ~{est_in:,} in / ~{est_out:,} out tokens of your '
+              f'Claude Code subscription quota ({MODEL}); no API key needed')
     if dry_run:
         if todo:
             t = todo[0]
@@ -118,33 +175,43 @@ def run(exp: str, out: Path, dry_run: bool, yes: bool, seed: int) -> int:
         print('pass --yes to spend, or --dry-run to preview')
         return 1
 
-    import anthropic
-    client = anthropic.Anthropic()
+    if backend == 'api':
+        import anthropic
+        client = anthropic.Anthropic()
+
+        def call(system, messages, max_tokens):
+            return _call_api(client, system, messages, max_tokens)
+    else:
+        settings = _clean_settings_file(tmp)
+        cc_cwd = tmp / 'cwd'
+        cc_cwd.mkdir(exist_ok=True)
+
+        def call(system, messages, max_tokens):
+            return _call_claude_code(system, messages, cc_cwd, settings)
+
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open('a', encoding='utf-8') as f:
         for i, t in enumerate(todo, 1):
             row = {'trial_id': t.trial_id, 'exp': t.exp, 'target': t.target,
-                   'paraphrase_idx': t.paraphrase_idx, 'n': t.n, 'condition': t.condition}
+                   'paraphrase_idx': t.paraphrase_idx, 'n': t.n, 'condition': t.condition,
+                   'backend': backend, 'model': MODEL}
             try:
                 if t.exp == 'exp1' or t.condition == 'installed':
                     system = installed_system(block_for(t))
                     messages = [{'role': 'user', 'content': trigger_user_message(t.task)}]
-                    r1 = _call(client, system, messages, 512 if t.exp == 'exp1' else 1024)
-                    reply = _text_of(r1)
+                    reply, stop = call(system, messages, 512 if t.exp == 'exp1' else 1024)
                     predicted = parse_load(reply)
                     row.update(predicted=predicted, triggered=predicted == t.target,
-                               stop_reason=r1.stop_reason)
+                               stop_reason=stop)
                     if t.exp == 'exp2':
                         if predicted == t.target:
                             messages += loaded_continuation(reply.strip(), by_name[t.target].body)
-                            r2 = _call(client, system, messages, 1024)
-                            reply = _text_of(r2)
+                            reply, _ = call(system, messages, 1024)
                         row.update(reply=reply, success=by_name[t.target].checker(reply))
                 else:  # referenced
-                    r = _call(client, BASE_SYSTEM,
-                              referenced_messages(by_name[t.target].body, t.task), 1024)
-                    reply = _text_of(r)
-                    row.update(reply=reply, stop_reason=r.stop_reason,
+                    reply, stop = call(BASE_SYSTEM,
+                                       referenced_messages(by_name[t.target].body, t.task), 1024)
+                    row.update(reply=reply, stop_reason=stop,
                                success=by_name[t.target].checker(reply))
             except Exception as e:  # record and continue — reruns resume past done rows
                 row.update(error=f'{type(e).__name__}: {e}')
@@ -162,9 +229,14 @@ def main(argv=None) -> int:
     p.add_argument('--dry-run', action='store_true')
     p.add_argument('--yes', action='store_true')
     p.add_argument('--seed', type=int, default=7)
+    p.add_argument('--backend', choices=['auto', 'api', 'claude-code'], default='auto',
+                   help='api = Anthropic SDK (needs ANTHROPIC_API_KEY); '
+                        'claude-code = headless `claude -p` on your subscription; '
+                        'auto = api if a key is set, else claude-code')
+    p.add_argument('--limit', type=int, default=0, help='run at most N trials (smoke tests)')
     a = p.parse_args(argv)
     out = a.out or Path('evals/results') / f'{a.exp}.jsonl'
-    return run(a.exp, out, a.dry_run, a.yes, a.seed)
+    return run(a.exp, out, a.dry_run, a.yes, a.seed, a.backend, a.limit)
 
 
 if __name__ == '__main__':
