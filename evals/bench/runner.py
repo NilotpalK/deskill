@@ -83,12 +83,73 @@ def _text_of(response) -> str:
     return ''.join(b.text for b in response.content if b.type == 'text')
 
 
-def _call_api(client, system: str, messages: list[dict], max_tokens: int) -> tuple[str, str]:
+def _call_api(client, system: str, messages: list[dict], max_tokens: int,
+              model: str) -> tuple[str, str]:
     # No refusal fallbacks on purpose: a silent model switch would corrupt the
     # measurement. Refusals are recorded as error rows instead.
     r = client.messages.create(
-        model=MODEL, max_tokens=max_tokens, system=system, messages=messages)
+        model=model, max_tokens=max_tokens, system=system, messages=messages)
     return _text_of(r), r.stop_reason
+
+
+def _resolve_openrouter_key() -> str:
+    import os
+    key = os.environ.get('OPENROUTER_API_KEY')
+    if not key:
+        env = Path('.env')
+        if env.is_file():
+            for line in env.read_text(encoding='utf-8').splitlines():
+                name, _, val = line.partition('=')
+                if name.strip().startswith('OPENROUTER') and val.strip():
+                    key = val.strip().strip('"\'')
+                    break
+    if not key:
+        raise SystemExit('no OpenRouter key: set OPENROUTER_API_KEY or put '
+                         'OPENROUTER_API_KEY=... in .env (gitignored)')
+    return key
+
+
+def _openrouter_prices(model: str) -> tuple[float, float] | None:
+    """($/MTok prompt, $/MTok completion) from the public catalog, or None."""
+    import urllib.request
+    try:
+        with urllib.request.urlopen('https://openrouter.ai/api/v1/models', timeout=15) as r:
+            data = json.load(r)
+        for m in data['data']:
+            if m['id'] == model:
+                p = m['pricing']
+                return float(p['prompt']) * 1e6, float(p['completion']) * 1e6
+    except Exception:
+        pass
+    return None
+
+
+def _call_openrouter(system: str, messages: list[dict], max_tokens: int,
+                     model: str, key: str) -> tuple[str, str]:
+    import time
+
+    import httpx
+    payload = {
+        'model': model,
+        'max_tokens': max(max_tokens, 4096),  # headroom: reasoning models spend completion tokens thinking
+        'messages': [{'role': 'system', 'content': system}, *messages],
+    }
+    last = None
+    for attempt in range(4):
+        last = httpx.post('https://openrouter.ai/api/v1/chat/completions',
+                          headers={'Authorization': f'Bearer {key}'},
+                          json=payload, timeout=600)
+        if last.status_code == 429 or last.status_code >= 500:
+            time.sleep(2 ** attempt * 2)
+            continue
+        last.raise_for_status()
+        data = last.json()
+        if data.get('error'):
+            raise RuntimeError(f'openrouter error: {str(data["error"])[:300]}')
+        choice = data['choices'][0]
+        return choice['message'].get('content') or '', choice.get('finish_reason') or ''
+    raise RuntimeError(f'openrouter still failing after retries: '
+                       f'{last.status_code} {last.text[:200]}')
 
 
 def _clean_settings_file(workdir: Path) -> Path:
@@ -109,7 +170,8 @@ def _clean_settings_file(workdir: Path) -> Path:
     return f
 
 
-def _call_claude_code(system: str, messages: list[dict], workdir: Path, settings: Path) -> tuple[str, str]:
+def _call_claude_code(system: str, messages: list[dict], workdir: Path, settings: Path,
+                      model: str = MODEL) -> tuple[str, str]:
     """One trial through `claude -p` — runs on the user's subscription, no API key.
 
     Multi-turn continuations are flattened into a single prompt (claude -p is
@@ -131,7 +193,7 @@ def _call_claude_code(system: str, messages: list[dict], workdir: Path, settings
     try:
         p = subprocess.run(
             [exe, '-p', prompt, '--system-prompt-file', str(sys_file), '--tools', '',
-             '--no-session-persistence', '--output-format', 'json', '--model', MODEL,
+             '--no-session-persistence', '--output-format', 'json', '--model', model,
              '--settings', str(settings), '--strict-mcp-config',
              '--exclude-dynamic-system-prompt-sections'],
             cwd=workdir, capture_output=True, text=True, encoding='utf-8', timeout=600)
@@ -150,10 +212,12 @@ def _estimate_tokens(text: str) -> int:
 
 
 def run(exp: str, out: Path, dry_run: bool, yes: bool, seed: int,
-        backend: str = 'auto', limit: int = 0, workers: int = 4) -> int:
+        backend: str = 'auto', limit: int = 0, workers: int = 4,
+        model: str | None = None) -> int:
     if backend == 'auto':
         import os
         backend = 'api' if os.environ.get('ANTHROPIC_API_KEY') else 'claude-code'
+    model = model or MODEL
     trials = {'exp1': exp1_trials, 'exp2': exp2_trials, 'exp3': exp3_trials}[exp](seed)
     done = set()
     if out.exists():
@@ -192,10 +256,16 @@ def run(exp: str, out: Path, dry_run: bool, yes: bool, seed: int,
             est_in += _estimate_tokens(block_for(t)) + 400  # possible stage 2
     if backend == 'api':
         cost = est_in / 1e6 * PRICE_IN + est_out / 1e6 * PRICE_OUT
-        print(f'estimated worst-case: ~{est_in:,} in / ~{est_out:,} out tokens ≈ ${cost:.2f} ({MODEL}, api backend)')
+        print(f'estimated worst-case: ~{est_in:,} in / ~{est_out:,} out tokens ≈ ${cost:.2f} ({model}, api backend)')
+    elif backend == 'openrouter':
+        prices = _openrouter_prices(model)
+        cost = (f'≈ ${est_in / 1e6 * prices[0] + est_out / 1e6 * prices[1]:.2f} '
+                f'(catalog rates, before provider prompt-cache discounts)'
+                if prices else '(catalog pricing unavailable)')
+        print(f'backend openrouter ({model}): ~{est_in:,} in / ~{est_out:,} out tokens {cost}')
     else:
         print(f'backend claude-code: ~{est_in:,} in / ~{est_out:,} out tokens of your '
-              f'Claude Code subscription quota ({MODEL}); no API key needed')
+              f'Claude Code subscription quota ({model}); no API key needed')
     if exp == 'exp3':
         print('exp3 note: the system prompt is identical within each pad level, so '
               'after one cache-warming call per level the rest read from prompt '
@@ -217,14 +287,19 @@ def run(exp: str, out: Path, dry_run: bool, yes: bool, seed: int,
         client = anthropic.Anthropic()
 
         def call(system, messages, max_tokens):
-            return _call_api(client, system, messages, max_tokens)
+            return _call_api(client, system, messages, max_tokens, model)
+    elif backend == 'openrouter':
+        key = _resolve_openrouter_key()
+
+        def call(system, messages, max_tokens):
+            return _call_openrouter(system, messages, max_tokens, model, key)
     else:
         settings = _clean_settings_file(tmp)
         cc_cwd = tmp / 'cwd'
         cc_cwd.mkdir(exist_ok=True)
 
         def call(system, messages, max_tokens):
-            return _call_claude_code(system, messages, cc_cwd, settings)
+            return _call_claude_code(system, messages, cc_cwd, settings, model)
 
     # Payloads precompute sequentially: render_block rewrites one shared
     # .autotrigger file, so it must not run from worker threads.
@@ -240,7 +315,7 @@ def run(exp: str, out: Path, dry_run: bool, yes: bool, seed: int,
     def process(t: Trial, system: str, messages: list[dict]) -> dict:
         row = {'trial_id': t.trial_id, 'exp': t.exp, 'target': t.target,
                'paraphrase_idx': t.paraphrase_idx, 'n': t.n, 'condition': t.condition,
-               'pad_k': t.pad_k, 'backend': backend, 'model': MODEL}
+               'pad_k': t.pad_k, 'backend': backend, 'model': model}
         try:
             if t.exp in ('exp1', 'exp3') or t.condition == 'installed':
                 reply, stop = call(system, messages, 512 if t.exp != 'exp2' else 1024)
@@ -296,16 +371,23 @@ def main(argv=None) -> int:
     p.add_argument('--dry-run', action='store_true')
     p.add_argument('--yes', action='store_true')
     p.add_argument('--seed', type=int, default=7)
-    p.add_argument('--backend', choices=['auto', 'api', 'claude-code'], default='auto',
+    p.add_argument('--backend', choices=['auto', 'api', 'claude-code', 'openrouter'],
+                   default='auto',
                    help='api = Anthropic SDK (needs ANTHROPIC_API_KEY); '
                         'claude-code = headless `claude -p` on your subscription; '
+                        'openrouter = any catalog model (OPENROUTER_API_KEY or .env); '
                         'auto = api if a key is set, else claude-code')
+    p.add_argument('--model', default=None,
+                   help=f'model id (default {MODEL}); openrouter ids look like '
+                        'openai/gpt-5.6-terra or deepseek/deepseek-v4-pro-0813')
     p.add_argument('--limit', type=int, default=0, help='run at most N trials (smoke tests)')
     p.add_argument('--workers', type=int, default=4,
                    help='parallel trials (ponytail: modest default — subscription rate limits)')
     a = p.parse_args(argv)
-    out = a.out or Path('evals/results') / f'{a.exp}.jsonl'
-    return run(a.exp, out, a.dry_run, a.yes, a.seed, a.backend, a.limit, a.workers)
+    slug = (a.model or MODEL).split('/')[-1]
+    default_name = f'{a.exp}.jsonl' if (a.model or MODEL) == MODEL else f'{a.exp}-{slug}.jsonl'
+    out = a.out or Path('evals/results') / default_name
+    return run(a.exp, out, a.dry_run, a.yes, a.seed, a.backend, a.limit, a.workers, a.model)
 
 
 if __name__ == '__main__':
