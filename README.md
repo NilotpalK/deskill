@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" width="90" alt="deskill logo">
+  <img src="https://raw.githubusercontent.com/NilotpalK/deskill/main/assets/logo.png" width="90" alt="deskill logo">
 </p>
 
 <h1 align="center">deskill</h1>
@@ -25,15 +25,15 @@ claude mcp add deskill -- deskill-mcp
 
 ## Does it actually matter? We measured it.
 
-![87% fewer task failures than installed skills (23 to 3 across 180 trials), plus ~300,000 fewer standing tokens per 100-message session](assets/savings.svg)
+![87% fewer task failures than installed skills (23 to 3 across 180 trials), plus ~300,000 fewer standing tokens per 100-message session](https://raw.githubusercontent.com/NilotpalK/deskill/main/assets/savings.svg)
 
 Skills only work if they reach the model. Same tasks, same model — the only difference is whether deskill delivers the skill:
 
-![Task success with and without the skill delivered: 97% vs 3%](assets/delivery.svg)
+![Task success with and without the skill delivered: 97% vs 3%](https://raw.githubusercontent.com/NilotpalK/deskill/main/assets/delivery.svg)
 
 And *how* the skill gets there matters too. Installing skills upfront makes the model first spot the right one among 100 resident descriptions — small models drop real points at exactly that step. deskill hands over the skill next to the task and skips the guessing:
 
-![deskill vs installed skills, per model](assets/deskill-vs-installed.svg)
+![deskill vs installed skills, per model](https://raw.githubusercontent.com/NilotpalK/deskill/main/assets/deskill-vs-installed.svg)
 
 Selection is precise even when skills overlap: with every target installed beside two deliberately confusable siblings, models picked the **exact** right skill or stayed silent — zero wrong-sibling picks in 90 trials across three models. And in the head-to-head, **deskill never lost to installation on any model we compared, spanning 2023 to 2026** — frontier models (Claude Opus 5, not shown) simply tie at 100%, and the gap grows as models get smaller, reaching **23 points on a 20B open-weight model**. Every number comes from ~1,800 reproducible trials in this repo — run them yourself with `python -m evals.bench.runner exp1 --dry-run` ([how-to below](#run-the-evals-yourself)).
 
@@ -168,7 +168,7 @@ Not in v1: `hub:` registry resolution (the hub API hasn't shipped upstream), the
 
 - **The @skills protocol** — deskill implements the open protocol by SylphAI: spec at [SylphAI-Inc/atskills](https://github.com/SylphAI-Inc/atskills), introduced in *"@skills: Attention Is All You Have"* ([arXiv 2608.12610](https://arxiv.org/abs/2608.12610)). deskill is an independent second implementation.
 - **The SKILL.md format** — the underlying skill file format is the open [Agent Skills](https://github.com/agentskills/agentskills) standard, originally developed by Anthropic.
-- **Benchmark methodology** — every number regenerates from the bench in [`evals/bench/`](evals/bench/) (see below); each trial lands as one JSONL row in `evals/results/`. Models tested: Claude Opus 5, GPT-5.6 Terra, GPT-5 Nano, GPT-OSS 20B, GPT-3.5 Turbo, Qwen 3.7 Flash, DeepSeek V4 Pro & Flash.
+- **Benchmark methodology** — every number regenerates from the bench in [`evals/bench/`](https://github.com/NilotpalK/deskill/tree/main/evals/bench) (see below); each trial lands as one JSONL row in `evals/results/`. Models tested: Claude Opus 5, GPT-5.6 Terra, GPT-5 Nano, GPT-OSS 20B, GPT-3.5 Turbo, Qwen 3.7 Flash, DeepSeek V4 Pro & Flash.
 
 ## Run the evals yourself
 
