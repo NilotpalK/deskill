@@ -7,7 +7,7 @@
 <p align="center"><strong>Give your AI agent the right skill at the right moment — without stuffing its prompt.</strong></p>
 
 <p align="center">
-  <a href="#quick-tour">Install</a> ·
+  <a href="#install">Install</a> ·
   <a href="#does-it-actually-matter-we-measured-it">Benchmarks</a> ·
   <a href="#what-installation-costs-you-in-tokens">Token savings</a> ·
   <a href="#why-people-use-it">Why?</a> ·
@@ -16,7 +16,7 @@
 
 Skills are little instruction packs that teach an agent how your team does things: how to write commits, review SQL, fill PDFs. Today the standard way to use them is to *install* them — every skill's description sits in your agent's prompt on every single message, forever. That costs tokens, clutters the context, and makes the agent guess which skill applies from a wall of text.
 
-deskill does it the other way: **fetch the skill at the moment it's needed, straight from any GitHub repo, for zero standing cost.** One command to install, works with Claude Code, Cursor, and any MCP-compatible agent.
+deskill does it the other way: **fetch the skill at the moment it's needed, straight from any GitHub repo, for zero standing cost.** Two commands to install, works with Claude Code, Cursor, Codex, and any MCP-compatible agent.
 
 ```sh
 pip install deskill
@@ -35,7 +35,7 @@ And *how* the skill gets there matters too. Installing skills upfront makes the 
 
 ![deskill vs installed skills, per model](assets/deskill-vs-installed.svg)
 
-Selection is precise even when skills overlap: with every target installed beside two deliberately confusable siblings, models picked the **exact** right skill or stayed silent — zero wrong-sibling picks in 90 trials across three models. And in the head-to-head, **deskill never lost to installation on any model we compared, spanning 2023 to 2026** — frontier models (Claude Opus 5, not shown) simply tie at 100%, and the gap grows as models get smaller, reaching **23 points on a 20B open-weight model**. Every number comes from ~1,800 reproducible trials in this repo — run them yourself with `python -m evals.bench.runner exp1 --dry-run`, full write-up in `evals/`.
+Selection is precise even when skills overlap: with every target installed beside two deliberately confusable siblings, models picked the **exact** right skill or stayed silent — zero wrong-sibling picks in 90 trials across three models. And in the head-to-head, **deskill never lost to installation on any model we compared, spanning 2023 to 2026** — frontier models (Claude Opus 5, not shown) simply tie at 100%, and the gap grows as models get smaller, reaching **23 points on a 20B open-weight model**. Every number comes from ~1,800 reproducible trials in this repo — run them yourself with `python -m evals.bench.runner exp1 --dry-run` ([how-to below](#run-the-evals-yourself)).
 
 ## What installation costs you in tokens
 
@@ -59,6 +59,75 @@ A skill fetched by deskill costs its body once, at the moment it's used — typi
 - **Keep what you like.** `deskill save` vendors a copy into your repo, git-tracked and yours to edit.
 - **Still want a few skills always-on?** `deskill triggers add` keeps a short auto-fire list — install less, not nothing.
 
+## Install
+
+Every agent below is the same two steps: install the package, then register the MCP server. Needs Python ≥ 3.11 and `git` on PATH — no API keys, no accounts, no config files. Fetching rides plain git (shallow, sparse), so there's no rate limit and private repos work with your existing credentials.
+
+```sh
+pip install deskill
+```
+
+### Claude Code
+
+```sh
+claude mcp add deskill -- deskill-mcp
+```
+
+Same in the desktop app's Code tab. New sessions see the `deskill_*` tools — that's it.
+
+### Claude Desktop
+
+Settings → Developer → Edit Config, add:
+
+```json
+{ "mcpServers": { "deskill": { "command": "deskill-mcp" } } }
+```
+
+### Cursor
+
+Add the same block to `~/.cursor/mcp.json` (or `.cursor/mcp.json` per project):
+
+```json
+{ "mcpServers": { "deskill": { "command": "deskill-mcp" } } }
+```
+
+### Codex
+
+```sh
+codex mcp add deskill -- deskill-mcp
+```
+
+Or in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.deskill]
+command = "deskill-mcp"
+```
+
+### Gemini CLI
+
+```sh
+gemini mcp add deskill deskill-mcp
+```
+
+### VS Code (Copilot agent mode)
+
+```sh
+code --add-mcp '{"name":"deskill","command":"deskill-mcp"}'
+```
+
+### Everything else (Windsurf, OpenCode, Copilot CLI, …)
+
+Any MCP client works — drop the same one-line JSON wherever your client keeps its MCP config:
+
+```json
+{ "mcpServers": { "deskill": { "command": "deskill-mcp" } } }
+```
+
+### No agent at all
+
+The CLI stands alone — `deskill get <url>` prints any skill straight from GitHub. See the [quick tour](#quick-tour) below.
+
 ## Quick tour
 
 ```sh
@@ -68,15 +137,7 @@ deskill triggers add my-skill                   # keep a skill always-on
 deskill prompt                                  # the always-on block, ready to paste
 ```
 
-Or from any MCP client via JSON config:
-
-```json
-{ "mcpServers": { "deskill": { "command": "deskill-mcp" } } }
-```
-
-MCP tools: `deskill_get`, `deskill_menu`, `deskill_save`, `deskill_install`, `deskill_uninstall`, `deskill_prompt`.
-
-Requires Python ≥ 3.11 and `git` on PATH — fetching rides plain git (shallow, sparse), so there's no API quota and private repos work with your existing credentials.
+The same six operations are exposed as MCP tools for agents: `deskill_get`, `deskill_menu`, `deskill_save`, `deskill_install`, `deskill_uninstall`, `deskill_prompt`.
 
 ## Always-on skills (one-time setup)
 
@@ -107,7 +168,7 @@ Not in v1: `hub:` registry resolution (the hub API hasn't shipped upstream), the
 
 - **The @skills protocol** — deskill implements the open protocol by SylphAI: spec at [SylphAI-Inc/atskills](https://github.com/SylphAI-Inc/atskills), introduced in *"@skills: Attention Is All You Have"* ([arXiv 2608.12610](https://arxiv.org/abs/2608.12610)). deskill is an independent second implementation.
 - **The SKILL.md format** — the underlying skill file format is the open [Agent Skills](https://github.com/agentskills/agentskills) standard, originally developed by Anthropic.
-- **Benchmark methodology & full results** — the complete write-up with every table, caveat, and measurement note: [`evals/FINDINGS.md`](evals/FINDINGS.md). Every number regenerates from the bench (see below); each trial lands as one JSONL row in `evals/results/`. Models tested: Claude Opus 5, GPT-5.6 Terra, GPT-5 Nano, GPT-OSS 20B, GPT-3.5 Turbo, Qwen 3.7 Flash, DeepSeek V4 Pro & Flash.
+- **Benchmark methodology** — every number regenerates from the bench in [`evals/bench/`](evals/bench/) (see below); each trial lands as one JSONL row in `evals/results/`. Models tested: Claude Opus 5, GPT-5.6 Terra, GPT-5 Nano, GPT-OSS 20B, GPT-3.5 Turbo, Qwen 3.7 Flash, DeepSeek V4 Pro & Flash.
 
 ## Run the evals yourself
 
