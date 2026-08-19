@@ -54,6 +54,26 @@ def report_exp1(rows: list[dict]) -> str:
     return '\n'.join(lines)
 
 
+def report_exp3(rows: list[dict]) -> str:
+    ok = [r for r in rows if 'error' not in r]
+    by_pad = defaultdict(list)
+    for r in ok:
+        by_pad[r.get('pad_k', 0)].append(r)
+    lines = ['## Experiment 3 — trigger rate vs. context padding (N=100 installed)',
+             '', '| transcript tokens between block and task | correct trigger | wrong skill | no trigger |',
+             '|---|---|---|---|']
+    for pad in sorted(by_pad):
+        rs = by_pad[pad]
+        correct = sum(1 for r in rs if r.get('triggered'))
+        wrong = sum(1 for r in rs if r.get('predicted') and not r.get('triggered'))
+        none_ = sum(1 for r in rs if not r.get('predicted'))
+        lines.append(f'| ~{pad}k | {_fmt(correct, len(rs))} | {wrong}/{len(rs)} | {none_}/{len(rs)} |')
+    lines.append('\n(0-padding baseline: experiment 1, N=100 row)')
+    if len(ok) != len(rows):
+        lines.append(f'({len(rows) - len(ok)} error rows excluded)')
+    return '\n'.join(lines)
+
+
 def report_exp2(rows: list[dict]) -> str:
     ok = [r for r in rows if 'error' not in r]
     by_cond = defaultdict(list)
@@ -89,7 +109,8 @@ def main(argv=None) -> int:
     for path in paths:
         rows = _rows(path)
         exp = rows[0]['exp'] if rows else path.stem
-        print(report_exp1(rows) if exp == 'exp1' else report_exp2(rows))
+        report = {'exp1': report_exp1, 'exp2': report_exp2, 'exp3': report_exp3}
+        print(report.get(exp, report_exp1)(rows))
         print()
     return 0
 

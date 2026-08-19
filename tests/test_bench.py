@@ -102,3 +102,51 @@ def test_wilson_interval():
     lo, hi = wilson(8, 10)
     assert 0 < lo < 0.8 < hi < 1
     assert wilson(0, 0) == (0.0, 1.0)
+
+
+def test_padding_transcript_sized_and_deterministic():
+    from evals.bench.padding import transcript
+    for k in (25_000, 100_000):
+        text = transcript(k, seed=7)
+        assert abs(len(text) / 4 - k) / k < 0.05      # within 5% of requested tokens
+    assert transcript(25_000, seed=7) == transcript(25_000, seed=7)
+    assert transcript(25_000, seed=7) != transcript(25_000, seed=8)
+
+
+def test_padding_cannot_plausibly_trigger_targets():
+    from evals.bench.padding import transcript
+    text = transcript(50_000, seed=7).lower()
+    for d in TARGETS + CHECKABLE:
+        assert d.name not in text
+    for keyword in ('pdf', 'commit', 'aws', 'dockerfile', 'csv', 'changelog',
+                    'migration', 'standup', 'release notes', 'on-call'):
+        assert keyword not in text, keyword
+
+
+def test_exp3_trials_shape_and_cache_friendliness():
+    from evals.bench.runner import exp3_trials
+    trials = exp3_trials(seed=7)
+    assert len(trials) == 10 * 3 * 3                 # targets x paraphrases x pad levels
+    assert {t.pad_k for t in trials} == {25, 50, 100}
+    assert all(t.n == 100 for t in trials)
+    for pad in (25, 50, 100):
+        level = [t for t in trials if t.pad_k == pad]
+        assert len({t.order_seed for t in level}) == 1   # one block order per level → cacheable
+    assert exp3_trials(seed=7)[0].trial_id == exp3_trials(seed=7)[0].trial_id
+
+
+def test_padded_system_ordering():
+    from evals.bench.conditions import padded_system
+    sys_prompt = padded_system('Auto-triggered Skills (X):\n- x: y (.atskills/x/SKILL.md)',
+                               'PADDING CONTENT HERE')
+    assert (sys_prompt.index('Auto-triggered Skills')
+            < sys_prompt.index('LOAD(')
+            < sys_prompt.index('PADDING CONTENT HERE'))
+
+
+def test_report_exp3_groups_by_pad():
+    from evals.bench.analyze import report_exp3
+    rows = ([{'exp': 'exp3', 'pad_k': 25, 'triggered': True, 'predicted': 'x', 'target': 'x'}] * 3
+            + [{'exp': 'exp3', 'pad_k': 100, 'triggered': False, 'predicted': None, 'target': 'x'}] * 2)
+    out = report_exp3(rows)
+    assert '~25k | 3/3' in out and '~100k | 0/2' in out

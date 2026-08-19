@@ -20,6 +20,14 @@ def trigger_user_message(task: str) -> str:
     return task
 
 
+def padded_system(block: str, padding: str) -> str:
+    """Distance-decay condition: the block sits at the top, then `padding` tokens
+    of session transcript, so the task lands far from the resident descriptions."""
+    return (f'{BASE_SYSTEM}\n\n{block}\n\n{TRIGGER_INSTRUCTION}\n\n'
+            f'[Transcript of the session so far]\n{padding}\n[End of transcript]\n\n'
+            "The user's next message follows.")
+
+
 def referenced_messages(body: str, task: str) -> list[dict]:
     """Point-of-use injection: the skill rides at the end of context, next to the task."""
     content = (f'<skill-instructions>\n{body}\n</skill-instructions>\n\n{task}')
