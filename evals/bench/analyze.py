@@ -41,7 +41,8 @@ def report_exp1(rows: list[dict]) -> str:
     by_n = defaultdict(list)
     for r in ok:
         by_n[r['n']].append(r)
-    lines = ['## Experiment 1 — trigger rate vs. installed-skill count',
+    model = rows[0].get('model', '') if rows else ''
+    lines = [f'## Experiment 1 — trigger rate vs. installed-skill count ({model})',
              '', '| N | correct trigger | wrong skill | no trigger |', '|---|---|---|---|']
     for n in sorted(by_n):
         rs = by_n[n]
@@ -59,7 +60,8 @@ def report_exp3(rows: list[dict]) -> str:
     by_pad = defaultdict(list)
     for r in ok:
         by_pad[r.get('pad_k', 0)].append(r)
-    lines = ['## Experiment 3 — trigger rate vs. context padding (N=100 installed)',
+    model = rows[0].get('model', '') if rows else ''
+    lines = [f'## Experiment 3 — trigger rate vs. context padding (N=100 installed, {model})',
              '', '| transcript tokens between block and task | correct trigger | wrong skill | no trigger |',
              '|---|---|---|---|']
     for pad in sorted(by_pad):
