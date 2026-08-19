@@ -41,6 +41,8 @@ Selection is precise even when skills overlap: with every target installed besid
 
 Installed skill descriptions ride in the prompt on **every message**, whether they're used or not. Rendered by deskill's own residency renderer and cross-checked against a real tokenizer (this bench uses lean ~30-token descriptions — real-world skills run 50–280 tokens each, so multiply accordingly):
 
+![Standing tokens over a 100-message session: 35,000 at 10 installed skills, up to 300,000 at 100 — versus 0 via deskill](https://raw.githubusercontent.com/NilotpalK/deskill/main/assets/token-cost.svg)
+
 | installed skills | every message pays | over a 100-message session |
 |---|---|---|
 | 10 | ~350 tokens | ~35,000 tokens |
