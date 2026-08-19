@@ -6,3 +6,4 @@ build/
 .venv/
 docs/
 .env
+evals/results/

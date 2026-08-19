@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="432" viewBox="0 0 680 432" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif">
+  <text x="0" y="18" font-size="14" font-weight="600" fill="#898781">Task success — deskill vs. installing skills upfront</text>
+  <text x="0" y="36" font-size="12" fill="#898781">30 trials per bar · sorted by how much deskill wins · Claude Opus 5 ties 100/100 (not shown)</text>
+
+  <!-- legend -->
+  <rect x="460" y="8" width="10" height="10" rx="3" fill="#1baf7a"/>
+  <text x="476" y="17" font-size="12" fill="#898781">deskill</text>
+  <rect x="540" y="8" width="10" height="10" rx="3" fill="#898781"/>
+  <text x="556" y="17" font-size="12" fill="#898781">installed skills</text>
+
+  <!-- Qwen 3.7 Flash -->
+  <text x="0" y="66" font-size="13" font-weight="600" fill="#898781">Qwen 3.7 Flash</text>
+  <rect x="40" y="74" width="560" height="18" rx="4" fill="#898781" opacity="0.15"/>
+  <rect x="40" y="74" width="560" height="18" rx="4" fill="#1baf7a"/>
+  <text x="608" y="88" font-size="12" font-weight="700" fill="#898781">100%</text>
+  <rect x="40" y="95" width="560" height="18" rx="4" fill="#898781" opacity="0.15"/>
+  <rect x="40" y="95" width="543" height="18" rx="4" fill="#898781"/>
+  <text x="591" y="109" font-size="12" font-weight="700" fill="#898781">97%</text>
+
+  <!-- GPT-5 Nano -->
+  <text x="0" y="140" font-size="13" font-weight="600" fill="#898781">GPT-5 Nano</text>
+  <rect x="40" y="148" width="560" height="18" rx="4" fill="#898781" opacity="0.15"/>
+  <rect x="40" y="148" width="560" height="18" rx="4" fill="#1baf7a"/>
+  <text x="608" y="162" font-size="12" font-weight="700" fill="#898781">100%</text>
+  <rect x="40" y="169" width="560" height="18" rx="4" fill="#898781" opacity="0.15"/>
+  <rect x="40" y="169" width="487" height="18" rx="4" fill="#898781"/>
+  <text x="535" y="183" font-size="12" font-weight="700" fill="#898781">87%</text>
+
+  <!-- DeepSeek V4 Flash -->
+  <text x="0" y="214" font-size="13" font-weight="600" fill="#898781">DeepSeek V4 Flash</text>
+  <rect x="40" y="222" width="560" height="18" rx="4" fill="#898781" opacity="0.15"/>
+  <rect x="40" y="222" width="560" height="18" rx="4" fill="#1baf7a"/>
+  <text x="608" y="236" font-size="12" font-weight="700" fill="#898781">100%</text>
+  <rect x="40" y="243" width="560" height="18" rx="4" fill="#898781" opacity="0.15"/>
+  <rect x="40" y="243" width="487" height="18" rx="4" fill="#898781"/>
+  <text x="535" y="257" font-size="12" font-weight="700" fill="#898781">87%</text>
+
+  <!-- DeepSeek V4 Pro -->
+  <text x="0" y="288" font-size="13" font-weight="600" fill="#898781">DeepSeek V4 Pro</text>
+  <rect x="40" y="296" width="560" height="18" rx="4" fill="#898781" opacity="0.15"/>
+  <rect x="40" y="296" width="543" height="18" rx="4" fill="#1baf7a"/>
+  <text x="591" y="310" font-size="12" font-weight="700" fill="#898781">97%</text>
+  <rect x="40" y="317" width="560" height="18" rx="4" fill="#898781" opacity="0.15"/>
+  <rect x="40" y="317" width="465" height="18" rx="4" fill="#898781"/>
+  <text x="513" y="331" font-size="12" font-weight="700" fill="#898781">83%</text>
+
+  <!-- GPT-OSS 20B -->
+  <text x="0" y="362" font-size="13" font-weight="600" fill="#898781">GPT-OSS 20B (open-weight)</text>
+  <rect x="40" y="370" width="560" height="18" rx="4" fill="#898781" opacity="0.15"/>
+  <rect x="40" y="370" width="521" height="18" rx="4" fill="#1baf7a"/>
+  <text x="569" y="384" font-size="12" font-weight="700" fill="#898781">93%</text>
+  <rect x="40" y="391" width="560" height="18" rx="4" fill="#898781" opacity="0.15"/>
+  <rect x="40" y="391" width="392" height="18" rx="4" fill="#898781"/>
+  <text x="440" y="405" font-size="12" font-weight="700" fill="#898781">70%</text>
+</svg>

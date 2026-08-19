@@ -150,8 +150,9 @@ CHECKABLE = [
             'Give me a commit message: added dark mode toggle to settings',
             'Commit message for removing the deprecated v1 endpoints please',
         ),
-        checker=lambda r: bool(re.search(
-            r'^(feat|fix|chore|docs|refactor|test)(\([\w-]+\))?!?: .{1,72}$', r, re.MULTILINE)),
+        checker=lambda r: bool(re.search(  # tolerate inline-code (backtick) wrapping
+            r'^(feat|fix|chore|docs|refactor|test)(\([\w-]+\))?!?: .{1,72}$',
+            r.replace('`', ''), re.MULTILINE)),
         good_example='fix(payments): retry idempotently on gateway timeouts'),
     CheckableDomain(
         name='semver-verdict',
@@ -245,6 +246,52 @@ CHECKABLE = [
                                and re.search(r'^B:', r, re.MULTILINE)),
         good_example='Y: shipped importer\nT: validation\nB: none'),
 ]
+
+
+def _sib(name, desc):
+    return Domain(name=name, description=desc, body=f'Guidance for {name.replace("-", " ")}.')
+
+
+# Two confusable siblings per target: same topic family, different scope.
+# exp5 measures whether models select the exact right skill when neighbors overlap.
+SIBLINGS = {
+    'pdf-form-filling': [
+        _sib('pdf-page-splitting', 'Use when the user wants to split, merge, or extract pages from a PDF'),
+        _sib('pdf-text-ocr', 'Use when the user needs to pull text out of scanned or image-based PDFs')],
+    'commit-message-style': [
+        _sib('pr-description-style', 'Use when the user is writing a pull request title or description'),
+        _sib('code-review-comments', 'Use when the user is wording review comments on someone\'s code')],
+    'aws-key-rotation': [
+        _sib('aws-iam-policy-review', 'Use when the user is auditing or tightening AWS IAM policies'),
+        _sib('secrets-vault-migration', 'Use when the user is moving credentials into a secrets manager')],
+    'sql-migration-review': [
+        _sib('sql-query-tuning', 'Use when the user wants to speed up a slow SQL query'),
+        _sib('database-backup-strategy', 'Use when the user is planning database backups or restores')],
+    'api-error-copywriting': [
+        _sib('api-docs-writing', 'Use when the user is writing reference documentation for an API'),
+        _sib('api-versioning-policy', 'Use when the user is deciding how to version or deprecate API endpoints')],
+    'dockerfile-slimming': [
+        _sib('docker-compose-setup', 'Use when the user is wiring services together with docker compose'),
+        _sib('k8s-resource-limits', 'Use when the user is setting container CPU or memory limits in Kubernetes')],
+    'i18n-string-extraction': [
+        _sib('locale-date-formatting', 'Use when the user is formatting dates, numbers, or currency per locale'),
+        _sib('rtl-layout-support', 'Use when the user is adapting a UI for right-to-left languages')],
+    'oncall-handoff-notes': [
+        _sib('incident-postmortems', 'Use when the user is writing a post-incident review document'),
+        _sib('alert-runbook-writing', 'Use when the user is writing or updating an alert runbook')],
+    'csv-data-cleaning': [
+        _sib('excel-formula-help', 'Use when the user needs help with spreadsheet formulas'),
+        _sib('data-schema-inference', 'Use when the user wants to infer column types from a data sample')],
+    'changelog-writing': [
+        _sib('release-versioning', 'Use when the user is choosing version numbers for a release'),
+        _sib('announcement-blog-drafting', 'Use when the user is drafting a product announcement post')],
+}
+
+
+def exp5_pool() -> list[Domain]:
+    """Targets + all confusable siblings + distractors, 50 skills total."""
+    sibs = [s for pair in SIBLINGS.values() for s in pair]
+    return TARGETS + sibs + distractors()[:50 - len(TARGETS) - len(sibs)]
 
 
 _TOPICS = [

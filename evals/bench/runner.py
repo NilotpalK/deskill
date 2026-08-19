@@ -17,7 +17,7 @@ from .conditions import (
     BASE_SYSTEM, installed_system, loaded_continuation, padded_system, parse_load,
     referenced_messages, trigger_user_message,
 )
-from .domains import CHECKABLE, TARGETS, all_domains, distractors
+from .domains import CHECKABLE, TARGETS, all_domains, distractors, exp5_pool
 from .padding import transcript
 from .skills_gen import build_project, nested_sets, render_block
 
@@ -79,6 +79,32 @@ def exp3_trials(seed: int = 7) -> list[Trial]:
     return trials
 
 
+def exp4_trials(seed: int = 7) -> list[Trial]:
+    """Tool improvement: the checkable tasks with the skill delivered at point of
+    use (referenced) vs. no skill at all (bare) — the with/without delta."""
+    trials = []
+    for d in CHECKABLE:
+        for i, task in enumerate(d.task_paraphrases[:3]):
+            for condition in ('referenced', 'bare'):
+                trials.append(Trial(
+                    trial_id=f'exp4-{condition}-{d.name}-p{i}', exp='exp4', target=d.name,
+                    paraphrase_idx=i, task=task, condition=condition))
+    return trials
+
+
+def exp5_trials(seed: int = 7) -> list[Trial]:
+    """Overlapping skills: each target installed beside 2 confusable siblings
+    (50 skills total). Measures exact-selection accuracy under overlap."""
+    rng = random.Random(seed)
+    trials = []
+    for d in TARGETS:
+        for i, task in enumerate(d.task_paraphrases[:3]):
+            trials.append(Trial(
+                trial_id=f'exp5-{d.name}-p{i}', exp='exp5', target=d.name,
+                paraphrase_idx=i, task=task, n=50, order_seed=rng.randrange(1 << 30)))
+    return trials
+
+
 def _text_of(response) -> str:
     return ''.join(b.text for b in response.content if b.type == 'text')
 
@@ -126,12 +152,15 @@ def _openrouter_prices(model: str) -> tuple[float, float] | None:
 
 def _call_openrouter(system: str, messages: list[dict], max_tokens: int,
                      model: str, key: str) -> tuple[str, str]:
+    import os
     import time
 
     import httpx
     payload = {
         'model': model,
-        'max_tokens': max(max_tokens, 4096),  # headroom: reasoning models spend completion tokens thinking
+        # headroom: reasoning models spend completion tokens thinking; floor is
+        # overridable for re-running truncated trials (DESKILL_BENCH_MAX_COMPLETION)
+        'max_tokens': max(max_tokens, int(os.environ.get('DESKILL_BENCH_MAX_COMPLETION', 8192))),
         'messages': [{'role': 'system', 'content': system}, *messages],
     }
     last = None
@@ -218,7 +247,8 @@ def run(exp: str, out: Path, dry_run: bool, yes: bool, seed: int,
         import os
         backend = 'api' if os.environ.get('ANTHROPIC_API_KEY') else 'claude-code'
     model = model or MODEL
-    trials = {'exp1': exp1_trials, 'exp2': exp2_trials, 'exp3': exp3_trials}[exp](seed)
+    trials = {'exp1': exp1_trials, 'exp2': exp2_trials, 'exp3': exp3_trials,
+              'exp4': exp4_trials, 'exp5': exp5_trials}[exp](seed)
     done = set()
     if out.exists():
         done = {json.loads(line)['trial_id'] for line in out.read_text(encoding='utf-8').splitlines() if line}
@@ -233,7 +263,9 @@ def run(exp: str, out: Path, dry_run: bool, yes: bool, seed: int,
     by_name = {d.name: d for d in all_domains()}
 
     def block_for(trial: Trial) -> str:
-        if trial.exp in ('exp1', 'exp3'):
+        if trial.exp == 'exp5':
+            names = [d.name for d in exp5_pool()]
+        elif trial.exp in ('exp1', 'exp3'):
             names = [d.name for d in sets[trial.n]]
         else:  # installed: the checkable target among 24 distractors
             names = [trial.target] + [d.name for d in distractors()[:24]]
@@ -307,9 +339,11 @@ def run(exp: str, out: Path, dry_run: bool, yes: bool, seed: int,
         if t.exp == 'exp3':
             return (padded_system(block_for(t), pad_for(t)),
                     [{'role': 'user', 'content': trigger_user_message(t.task)}])
-        if t.exp == 'exp1' or t.condition == 'installed':
+        if t.exp in ('exp1', 'exp5') or t.condition == 'installed':
             return (installed_system(block_for(t)),
                     [{'role': 'user', 'content': trigger_user_message(t.task)}])
+        if t.condition == 'bare':  # no skill anywhere — the without-tool baseline
+            return BASE_SYSTEM, [{'role': 'user', 'content': t.task}]
         return BASE_SYSTEM, referenced_messages(by_name[t.target].body, t.task)
 
     def process(t: Trial, system: str, messages: list[dict]) -> dict:
@@ -317,7 +351,7 @@ def run(exp: str, out: Path, dry_run: bool, yes: bool, seed: int,
                'paraphrase_idx': t.paraphrase_idx, 'n': t.n, 'condition': t.condition,
                'pad_k': t.pad_k, 'backend': backend, 'model': model}
         try:
-            if t.exp in ('exp1', 'exp3') or t.condition == 'installed':
+            if t.exp in ('exp1', 'exp3', 'exp5') or t.condition == 'installed':
                 reply, stop = call(system, messages, 512 if t.exp != 'exp2' else 1024)
                 predicted = parse_load(reply)
                 row.update(predicted=predicted, triggered=predicted == t.target,
@@ -366,7 +400,7 @@ def run(exp: str, out: Path, dry_run: bool, yes: bool, seed: int,
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog='deskill-bench')
-    p.add_argument('exp', choices=['exp1', 'exp2', 'exp3'])
+    p.add_argument('exp', choices=['exp1', 'exp2', 'exp3', 'exp4', 'exp5'])
     p.add_argument('--out', type=Path, default=None)
     p.add_argument('--dry-run', action='store_true')
     p.add_argument('--yes', action='store_true')

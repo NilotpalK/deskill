@@ -70,6 +70,11 @@ def test_parse_load():
     assert parse_load('Sure!\nLOAD(.atskills/x/SKILL.md)') == 'x'
     assert parse_load('LOAD(.atskills/team/deploy/SKILL.md) rest') == 'team/deploy'
     assert parse_load('No skill applies here.') is None
+    # mangled-prefix spellings are selection successes, not errors
+    assert parse_load('LOAD(./atskills/pdf-form-filling)') == 'pdf-form-filling'
+    assert parse_load('LOAD(atskills/dockerfile-slimming)') == 'dockerfile-slimming'
+    assert parse_load('LOAD(./.atskills/i18n-string-extraction)') == 'i18n-string-extraction'
+    assert parse_load('LOAD(`sec-check`)') == 'sec-check'
 
 
 def test_condition_builders():
@@ -142,6 +147,47 @@ def test_padded_system_ordering():
     assert (sys_prompt.index('Auto-triggered Skills')
             < sys_prompt.index('LOAD(')
             < sys_prompt.index('PADDING CONTENT HERE'))
+
+
+def test_exp4_trials_shape():
+    from evals.bench.runner import exp4_trials
+    trials = exp4_trials(seed=7)
+    assert len(trials) == 10 * 3 * 2
+    assert {t.condition for t in trials} == {'referenced', 'bare'}
+    assert len({t.trial_id for t in trials}) == len(trials)
+
+
+def test_exp5_pool_and_trials():
+    from evals.bench.domains import SIBLINGS, exp5_pool
+    from evals.bench.runner import exp5_trials
+    pool = exp5_pool()
+    names = [d.name for d in pool]
+    assert len(pool) == 50 and len(set(names)) == 50
+    for t in TARGETS:
+        assert t.name in names
+        for s in SIBLINGS[t.name]:
+            assert s.name in names and s.description.startswith('Use when')
+    trials = exp5_trials(seed=7)
+    assert len(trials) == 30 and all(t.n == 50 for t in trials)
+
+
+def test_report_exp5_splits_sibling_confusion():
+    from evals.bench.analyze import report_exp5
+    rows = [
+        {'exp': 'exp5', 'target': 'pdf-form-filling', 'predicted': 'pdf-form-filling',
+         'triggered': True, 'model': 'm'},
+        {'exp': 'exp5', 'target': 'pdf-form-filling', 'predicted': 'pdf-text-ocr',
+         'triggered': False, 'model': 'm'},
+        {'exp': 'exp5', 'target': 'pdf-form-filling', 'predicted': 'kafka-debugging',
+         'triggered': False, 'model': 'm'},
+        {'exp': 'exp5', 'target': 'pdf-form-filling', 'predicted': None,
+         'triggered': False, 'model': 'm'},
+    ]
+    out = report_exp5(rows)
+    assert 'exact correct skill | 1/4' in out
+    assert 'confused with a sibling | 1/4' in out
+    assert 'other wrong skill | 1/4' in out
+    assert 'no trigger | 1/4' in out
 
 
 def test_report_exp3_groups_by_pad():

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="150" viewBox="0 0 680 150" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif">
+  <text x="0" y="18" font-size="14" font-weight="600" fill="#898781">Task success — same tasks, with and without the skill delivered</text>
+  <text x="0" y="36" font-size="12" fill="#898781">DeepSeek V4 Pro · 30 trials per bar</text>
+
+  <!-- rails -->
+  <rect x="150" y="56" width="480" height="22" rx="4" fill="#898781" opacity="0.15"/>
+  <rect x="150" y="96" width="480" height="22" rx="4" fill="#898781" opacity="0.15"/>
+
+  <!-- bars -->
+  <rect x="150" y="56" width="466" height="22" rx="4" fill="#1baf7a"/>
+  <rect x="150" y="96" width="14" height="22" rx="4" fill="#898781"/>
+
+  <!-- labels -->
+  <text x="142" y="71" font-size="13" fill="#898781" text-anchor="end">deskill delivers it</text>
+  <text x="142" y="111" font-size="13" fill="#898781" text-anchor="end">no skill</text>
+
+  <!-- values -->
+  <text x="638" y="71" font-size="13" font-weight="700" fill="#898781">97%</text>
+  <text x="172" y="111" font-size="13" font-weight="700" fill="#898781">3%</text>
+</svg>

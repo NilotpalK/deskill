@@ -20,12 +20,16 @@ def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
 
 
 def _rows(path: Path) -> list[dict]:
+    from .conditions import normalize_skill_path
     from .domains import CHECKABLE
     checkers = {d.name: d.checker for d in CHECKABLE}
     rows = [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines() if line]
-    for r in rows:  # re-score from the stored reply: checker fixes never re-spend
+    for r in rows:  # re-score from stored data: scoring fixes never re-spend
         if 'reply' in r and r['target'] in checkers:
             r['success'] = checkers[r['target']](r['reply'])
+        if r.get('predicted'):  # re-normalize path spellings (./atskills/x etc.)
+            r['predicted'] = normalize_skill_path(r['predicted'])
+            r['triggered'] = r['predicted'] == r['target']
     return rows
 
 
@@ -103,6 +107,50 @@ def report_exp2(rows: list[dict]) -> str:
     return '\n'.join(lines)
 
 
+def report_exp4(rows: list[dict]) -> str:
+    ok = [r for r in rows if 'error' not in r]
+    model = ok[0].get('model', '') if ok else ''
+    by_cond = defaultdict(list)
+    for r in ok:
+        by_cond[r['condition']].append(r)
+    lines = [f'## Experiment 4 — task success with vs. without the skill ({model})',
+             '', '| condition | task success |', '|---|---|']
+    for cond, label in (('referenced', 'with skill (point-of-use via deskill)'),
+                        ('bare', 'without skill (bare model)')):
+        rs = by_cond.get(cond, [])
+        lines.append(f'| {label} | {_fmt(sum(1 for r in rs if r.get("success")), len(rs))} |')
+    lines += ['', '| skill | with | without |', '|---|---|---|']
+    by_skill = defaultdict(lambda: defaultdict(list))
+    for r in ok:
+        by_skill[r['target']][r['condition']].append(r)
+    for skill in sorted(by_skill):
+        cells = [_fmt(sum(1 for r in by_skill[skill][c] if r.get('success')),
+                      len(by_skill[skill][c])) for c in ('referenced', 'bare')]
+        lines.append(f'| {skill} | {cells[0]} | {cells[1]} |')
+    return '\n'.join(lines)
+
+
+def report_exp5(rows: list[dict]) -> str:
+    from .domains import SIBLINGS
+    sibs_of = {t: {s.name for s in pair} for t, pair in SIBLINGS.items()}
+    ok = [r for r in rows if 'error' not in r]
+    model = ok[0].get('model', '') if ok else ''
+    correct = sum(1 for r in ok if r.get('triggered'))
+    sibling = sum(1 for r in ok if r.get('predicted') and not r.get('triggered')
+                  and r['predicted'] in sibs_of.get(r['target'], set()))
+    other = sum(1 for r in ok if r.get('predicted') and not r.get('triggered')
+                and r['predicted'] not in sibs_of.get(r['target'], set()))
+    none_ = sum(1 for r in ok if not r.get('predicted'))
+    lines = [f'## Experiment 5 — exact selection under overlapping skills ({model})',
+             '', '50 installed skills; every target flanked by 2 confusable siblings.',
+             '', '| outcome | count |', '|---|---|',
+             f'| exact correct skill | {_fmt(correct, len(ok))} |',
+             f'| confused with a sibling | {sibling}/{len(ok)} |',
+             f'| other wrong skill | {other}/{len(ok)} |',
+             f'| no trigger | {none_}/{len(ok)} |']
+    return '\n'.join(lines)
+
+
 def main(argv=None) -> int:
     paths = [Path(p) for p in (argv or sys.argv[1:])]
     if not paths:
@@ -111,7 +159,8 @@ def main(argv=None) -> int:
     for path in paths:
         rows = _rows(path)
         exp = rows[0]['exp'] if rows else path.stem
-        report = {'exp1': report_exp1, 'exp2': report_exp2, 'exp3': report_exp3}
+        report = {'exp1': report_exp1, 'exp2': report_exp2, 'exp3': report_exp3,
+                  'exp4': report_exp4, 'exp5': report_exp5}
         print(report.get(exp, report_exp1)(rows))
         print()
     return 0

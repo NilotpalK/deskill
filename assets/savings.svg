@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="190" viewBox="0 0 680 190" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif">
+  <!-- big number -->
+  <text x="0" y="102" font-size="88" font-weight="700" fill="#1baf7a" letter-spacing="-3">87%</text>
+  <text x="2" y="132" font-size="13" fill="#898781">fewer task failures than installed skills:</text>
+  <text x="2" y="150" font-size="13" fill="#898781">23 failures drop to 3 across 180 head-to-head</text>
+  <text x="2" y="168" font-size="13" fill="#898781">trials, six models spanning 2023–2026.</text>
+
+  <!-- side statement -->
+  <text x="330" y="66" font-size="19" font-weight="600" fill="#898781">deskill wins on both measures at once:</text>
+  <text x="330" y="94" font-size="17" fill="#898781">fewer failures on every fallible model, and</text>
+  <text x="330" y="120" font-size="17" fill="#898781">~300,000 fewer standing tokens per</text>
+  <text x="330" y="146" font-size="17" fill="#898781">100-message session at 100 skills installed.</text>
+</svg>

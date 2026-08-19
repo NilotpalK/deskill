@@ -45,11 +45,22 @@ def loaded_continuation(load_line: str, body: str) -> list[dict]:
 _LOAD = re.compile(r'LOAD\(([^)]+)\)')
 
 
+def normalize_skill_path(path: str) -> str | None:
+    """Canonical .atskills-relative name from however a model spelled the path.
+
+    Models mangle the prefix (./atskills/x, atskills/x, ./.atskills/x) — spelling
+    slips, not selection errors, so normalization tolerates them all.
+    """
+    p = path.strip().strip('`"\'')
+    p = p.removeprefix('./')
+    p = p.removeprefix('.atskills/').removeprefix('atskills/')
+    p = p.removesuffix('/SKILL.md')
+    return p.strip('/') or None
+
+
 def parse_load(reply: str) -> str | None:
     """The skill path the model asked to load, normalized to its .atskills-relative name."""
     m = _LOAD.search(reply)
     if not m:
         return None
-    path = m.group(1).strip()
-    path = path.removeprefix('.atskills/').removesuffix('/SKILL.md')
-    return path.strip('/') or None
+    return normalize_skill_path(m.group(1))
