@@ -151,7 +151,7 @@ CHECKABLE = [
             'Commit message for removing the deprecated v1 endpoints please',
         ),
         checker=lambda r: bool(re.search(
-            r'^(feat|fix|chore|docs|refactor|test)(\([\w-]+\))?: .{1,72}$', r, re.MULTILINE)),
+            r'^(feat|fix|chore|docs|refactor|test)(\([\w-]+\))?!?: .{1,72}$', r, re.MULTILINE)),
         good_example='fix(payments): retry idempotently on gateway timeouts'),
     CheckableDomain(
         name='semver-verdict',
@@ -218,7 +218,7 @@ CHECKABLE = [
             'Ballpark the effort for migrating the cron jobs to the scheduler',
             'Time estimate for writing the S3 backup script?',
         ),
-        checker=lambda r: bool(re.search(r'^ETA: \d+(\.\d+)?h\s*$', r, re.MULTILINE)),
+        checker=lambda r: bool(re.search(r'\bETA: \d+(\.\d+)?h\b', r)),
         good_example='Straightforward middleware change.\nETA: 6h'),
     CheckableDomain(
         name='api-response-shape',

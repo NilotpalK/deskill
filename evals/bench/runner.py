@@ -124,7 +124,7 @@ def _estimate_tokens(text: str) -> int:
 
 
 def run(exp: str, out: Path, dry_run: bool, yes: bool, seed: int,
-        backend: str = 'auto', limit: int = 0) -> int:
+        backend: str = 'auto', limit: int = 0, workers: int = 4) -> int:
     if backend == 'auto':
         import os
         backend = 'api' if os.environ.get('ANTHROPIC_API_KEY') else 'claude-code'
@@ -189,35 +189,49 @@ def run(exp: str, out: Path, dry_run: bool, yes: bool, seed: int,
         def call(system, messages, max_tokens):
             return _call_claude_code(system, messages, cc_cwd, settings)
 
+    # Payloads precompute sequentially: render_block rewrites one shared
+    # .autotrigger file, so it must not run from worker threads.
+    def payload(t: Trial) -> tuple:
+        if t.exp == 'exp1' or t.condition == 'installed':
+            return (installed_system(block_for(t)),
+                    [{'role': 'user', 'content': trigger_user_message(t.task)}])
+        return BASE_SYSTEM, referenced_messages(by_name[t.target].body, t.task)
+
+    def process(t: Trial, system: str, messages: list[dict]) -> dict:
+        row = {'trial_id': t.trial_id, 'exp': t.exp, 'target': t.target,
+               'paraphrase_idx': t.paraphrase_idx, 'n': t.n, 'condition': t.condition,
+               'backend': backend, 'model': MODEL}
+        try:
+            if t.exp == 'exp1' or t.condition == 'installed':
+                reply, stop = call(system, messages, 512 if t.exp == 'exp1' else 1024)
+                predicted = parse_load(reply)
+                row.update(predicted=predicted, triggered=predicted == t.target,
+                           stop_reason=stop)
+                if t.exp == 'exp2':
+                    if predicted == t.target:
+                        messages = messages + loaded_continuation(
+                            reply.strip(), by_name[t.target].body)
+                        reply, _ = call(system, messages, 1024)
+                    row.update(reply=reply, success=by_name[t.target].checker(reply))
+            else:  # referenced
+                reply, stop = call(system, messages, 1024)
+                row.update(reply=reply, stop_reason=stop,
+                           success=by_name[t.target].checker(reply))
+        except Exception as e:  # record and continue — reruns resume past done rows
+            row.update(error=f'{type(e).__name__}: {e}')
+        return row
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    payloads = [(t, *payload(t)) for t in todo]
     out.parent.mkdir(parents=True, exist_ok=True)
-    with out.open('a', encoding='utf-8') as f:
-        for i, t in enumerate(todo, 1):
-            row = {'trial_id': t.trial_id, 'exp': t.exp, 'target': t.target,
-                   'paraphrase_idx': t.paraphrase_idx, 'n': t.n, 'condition': t.condition,
-                   'backend': backend, 'model': MODEL}
-            try:
-                if t.exp == 'exp1' or t.condition == 'installed':
-                    system = installed_system(block_for(t))
-                    messages = [{'role': 'user', 'content': trigger_user_message(t.task)}]
-                    reply, stop = call(system, messages, 512 if t.exp == 'exp1' else 1024)
-                    predicted = parse_load(reply)
-                    row.update(predicted=predicted, triggered=predicted == t.target,
-                               stop_reason=stop)
-                    if t.exp == 'exp2':
-                        if predicted == t.target:
-                            messages += loaded_continuation(reply.strip(), by_name[t.target].body)
-                            reply, _ = call(system, messages, 1024)
-                        row.update(reply=reply, success=by_name[t.target].checker(reply))
-                else:  # referenced
-                    reply, stop = call(BASE_SYSTEM,
-                                       referenced_messages(by_name[t.target].body, t.task), 1024)
-                    row.update(reply=reply, stop_reason=stop,
-                               success=by_name[t.target].checker(reply))
-            except Exception as e:  # record and continue — reruns resume past done rows
-                row.update(error=f'{type(e).__name__}: {e}')
+    with out.open('a', encoding='utf-8') as f, \
+            ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(process, t, s, m): t for t, s, m in payloads}
+        for i, fut in enumerate(as_completed(futures), 1):
+            row = fut.result()  # rows are written from this thread only
             f.write(json.dumps(row) + '\n')
             f.flush()
-            print(f'[{i}/{len(todo)}] {t.trial_id}: '
+            print(f'[{i}/{len(todo)}] {row["trial_id"]}: '
                   f'{row.get("error") or row.get("success", row.get("triggered"))}')
     return 0
 
@@ -234,9 +248,11 @@ def main(argv=None) -> int:
                         'claude-code = headless `claude -p` on your subscription; '
                         'auto = api if a key is set, else claude-code')
     p.add_argument('--limit', type=int, default=0, help='run at most N trials (smoke tests)')
+    p.add_argument('--workers', type=int, default=4,
+                   help='parallel trials (ponytail: modest default — subscription rate limits)')
     a = p.parse_args(argv)
     out = a.out or Path('evals/results') / f'{a.exp}.jsonl'
-    return run(a.exp, out, a.dry_run, a.yes, a.seed, a.backend, a.limit)
+    return run(a.exp, out, a.dry_run, a.yes, a.seed, a.backend, a.limit, a.workers)
 
 
 if __name__ == '__main__':

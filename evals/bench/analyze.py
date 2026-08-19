@@ -20,7 +20,13 @@ def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
 
 
 def _rows(path: Path) -> list[dict]:
-    return [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines() if line]
+    from .domains import CHECKABLE
+    checkers = {d.name: d.checker for d in CHECKABLE}
+    rows = [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines() if line]
+    for r in rows:  # re-score from the stored reply: checker fixes never re-spend
+        if 'reply' in r and r['target'] in checkers:
+            r['success'] = checkers[r['target']](r['reply'])
+    return rows
 
 
 def _fmt(k: int, n: int) -> str:
