@@ -1,6 +1,6 @@
 [project]
 name = "deskill"
-version = "0.1.1"
+version = "0.1.2"
 description = "Python implementation of the @skills protocol (SylphAI, arXiv 2608.12610): MCP server + CLI"
 readme = "README.md"
 license = { file = "LICENSE" }

@@ -69,6 +69,10 @@ def _cmd_prompt(args) -> int:
 
 
 def main(argv=None) -> int:
+    # Windows consoles default to a legacy codepage; skill bodies are UTF-8.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, 'reconfigure'):
+            stream.reconfigure(encoding='utf-8', errors='replace')
     parser = argparse.ArgumentParser(
         prog='deskill',
         description='@skills protocol client (SylphAI, arXiv 2608.12610)')
