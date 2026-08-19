@@ -25,7 +25,7 @@ claude mcp add deskill -- deskill-mcp
 
 ## Does it actually matter? We measured it.
 
-![87% fewer task failures than installed skills (23 to 3 across 180 trials), and saves up to 300,000 standing tokens per 100-message session with 100 skills installed](https://raw.githubusercontent.com/NilotpalK/deskill/main/assets/savings.svg)
+![87% fewer task failures than installed skills (23 to 3 across 180 trials), and saves up to 300,000 standing tokens per 100-message session with 100 skills installed](https://raw.githubusercontent.com/NilotpalK/deskill/main/assets/savings.svg?v=2)
 
 Skills only work if they reach the model. Same tasks, same model — the only difference is whether deskill delivers the skill:
 
